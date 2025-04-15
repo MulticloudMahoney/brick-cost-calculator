@@ -50,9 +50,9 @@ interface ProjectionRow {
   'GCP Markup (3%) Adjusted Price': number;
   'Reseller Margin (%)': number;
   'Reseller Revenue (USD)': number;
-  'Reseller Revenue (40%)': number;
-  View: string;
-  'Quarterly Payment to Reseller (5% of PB)': number;
+  'Quarterly Consumption (USD)': number;
+  'Current Quarter Consumption (USD)': number;
+  'Quarterly Payment (USD)': number;
   'Reseller Gross Profit (USD)': number;
   'Reseller Net Profit (USD)': number;
   Joe: number;
@@ -106,6 +106,8 @@ const CostCalculator: React.FC = () => {
     let currentDbus = dbus;
     const rows: ProjectionRow[] = [];
     let prevCost: number | null = null;
+    let quarterlyConsumption = 0;
+    let totalQuarterlyConsumption = 0;
 
     for (let month = 1; month <= months; month++) {
       const computeCost = currentDbus * profile.dbu_rate;
@@ -113,16 +115,30 @@ const CostCalculator: React.FC = () => {
       const storagePb = storageGb / 1024;
       const unitPricePb = storagePrice * 1024;
       const storageCostTotal = storagePb * unitPricePb;
-      const total = computeCost + storageCostTotal;
+      
+      // Base cost before any markups
+      const baseCost = computeCost + storageCostTotal;
+      
+      // Add to quarterly consumption tracking
+      quarterlyConsumption += baseCost;
+      totalQuarterlyConsumption = quarterlyConsumption;
+
+      // GCP markup (3%)
+      const gcpAdjusted = baseCost / 0.97;
+      
+      // This is what the end user sees on their GCP bill
+      const total = gcpAdjusted;
 
       const costIncrease = prevCost !== null ? total - prevCost : null;
       prevCost = total;
 
-      const gcpAdjusted = total / 0.97;
+      // Calculate quarterly payment (5% of total consumption for the quarter)
+      const quarterlyPayment = month % 3 === 0 ? quarterlyConsumption * 0.05 : 0;
+      
+      // Reseller calculations
       const resellerMargin = 0.25;
       const resellerRevenue = gcpAdjusted * resellerMargin;
-      const quarterlyPayment = month % 3 === 0 ? storagePb * 0.05 * unitPricePb : 0;
-      const grossProfit = resellerRevenue + quarterlyPayment;
+      const grossProfit = resellerRevenue + (month % 3 === 0 ? quarterlyPayment : 0);
       const netProfit = grossProfit * 0.60;
       const joe = netProfit * 0.40;
       const terry = netProfit * 0.40;
@@ -137,15 +153,20 @@ const CostCalculator: React.FC = () => {
         'GCP Markup (3%) Adjusted Price': Number(gcpAdjusted.toFixed(2)),
         'Reseller Margin (%)': 25,
         'Reseller Revenue (USD)': Number(resellerRevenue.toFixed(2)),
-        'Reseller Revenue (40%)': Number((resellerRevenue * 0.40).toFixed(2)),
-        View: 'Monthly',
-        'Quarterly Payment to Reseller (5% of PB)': Number(quarterlyPayment.toFixed(2)),
+        'Quarterly Consumption (USD)': Number(totalQuarterlyConsumption.toFixed(2)),
+        'Current Quarter Consumption (USD)': Number(quarterlyConsumption.toFixed(2)),
+        'Quarterly Payment (USD)': Number(quarterlyPayment.toFixed(2)),
         'Reseller Gross Profit (USD)': Number(grossProfit.toFixed(2)),
         'Reseller Net Profit (USD)': Number(netProfit.toFixed(2)),
         Joe: Number(joe.toFixed(2)),
         Terry: Number(terry.toFixed(2)),
         REFERRAL: Number(referral.toFixed(2))
       });
+
+      // Reset quarterly consumption tracking at end of quarter
+      if (month % 3 === 0) {
+        quarterlyConsumption = 0;
+      }
 
       currentDbus *= (1 + growth);
     }
@@ -192,8 +213,9 @@ const CostCalculator: React.FC = () => {
       'Monthly Cost Increase (USD)': row['Monthly Cost Increase (USD)']?.toFixed(2) || '',
       'GCP Markup (3%) Adjusted Price': row['GCP Markup (3%) Adjusted Price'].toFixed(2),
       'Reseller Revenue (USD)': row['Reseller Revenue (USD)'].toFixed(2),
-      'Reseller Revenue (40%)': row['Reseller Revenue (40%)'].toFixed(2),
-      'Quarterly Payment to Reseller (5% of PB)': row['Quarterly Payment to Reseller (5% of PB)'].toFixed(2),
+      'Quarterly Consumption (USD)': row['Quarterly Consumption (USD)'].toFixed(2),
+      'Current Quarter Consumption (USD)': row['Current Quarter Consumption (USD)'].toFixed(2),
+      'Quarterly Payment (USD)': row['Quarterly Payment (USD)'].toFixed(2),
       'Reseller Gross Profit (USD)': row['Reseller Gross Profit (USD)'].toFixed(2),
       'Reseller Net Profit (USD)': row['Reseller Net Profit (USD)'].toFixed(2),
       Joe: row.Joe.toFixed(2),
@@ -233,21 +255,74 @@ const CostCalculator: React.FC = () => {
     labels: projection.length > 0 ? projection.map(row => `Month ${row.Month}`) : [],
     datasets: [
       {
-        label: 'Monthly Cost ($)',
+        label: 'GCP Bill (Customer Cost)',
         data: projection.length > 0 ? projection.map(row => row['Monthly Cost (USD)']) : [],
         borderColor: '#1f77b4',
         backgroundColor: 'rgba(31, 119, 180, 0.1)',
         tension: 0.1,
         fill: true,
+        yAxisID: 'y',
       },
       {
-        label: 'Reseller Gross Profit ($)',
-        data: projection.length > 0 ? projection.map(row => row['Reseller Gross Profit (USD)']) : [],
+        label: 'Quarterly Consumption',
+        data: projection.length > 0 ? projection.map(row => row['Current Quarter Consumption (USD)']) : [],
         borderColor: '#2ca02c',
         backgroundColor: 'rgba(44, 160, 44, 0.1)',
         tension: 0.1,
         fill: true,
+        yAxisID: 'y',
       },
+      {
+        label: 'Quarterly Payments (5%)',
+        data: projection.length > 0 ? projection.map(row => row['Quarterly Payment (USD)']) : [],
+        borderColor: '#ff7f0e',
+        backgroundColor: 'rgba(255, 127, 14, 0.1)',
+        tension: 0.1,
+        fill: true,
+        yAxisID: 'y1',
+      },
+      {
+        label: 'Monthly Reseller Revenue (25%)',
+        data: projection.length > 0 ? projection.map(row => row['Reseller Revenue (USD)']) : [],
+        borderColor: '#d62728',
+        backgroundColor: 'rgba(214, 39, 40, 0.1)',
+        tension: 0.1,
+        fill: true,
+        yAxisID: 'y1',
+      }
+    ],
+  };
+
+  const earningsChartData = {
+    labels: projection.length > 0 ? projection.map(row => `Month ${row.Month}`) : [],
+    datasets: [
+      {
+        label: 'Monthly Cost ($)',
+        data: projection.length > 0 ? projection.map(row => row['Monthly Cost (USD)']) : [],
+        borderColor: '#1f77b4',
+        backgroundColor: 'rgba(31, 119, 180, 0.1)',
+        tension: 0.1,
+        yAxisID: 'y',
+        fill: true,
+      },
+      {
+        label: 'Joe Earnings ($)',
+        data: projection.length > 0 ? projection.map(row => row.Joe) : [],
+        borderColor: '#9467bd',
+        backgroundColor: 'rgba(148, 103, 189, 0.1)',
+        tension: 0.1,
+        yAxisID: 'y1',
+        fill: true,
+      },
+      {
+        label: 'Terry Earnings ($)',
+        data: projection.length > 0 ? projection.map(row => row.Terry) : [],
+        borderColor: '#8c564b',
+        backgroundColor: 'rgba(140, 86, 75, 0.1)',
+        tension: 0.1,
+        yAxisID: 'y1',
+        fill: true,
+      }
     ],
   };
 
@@ -259,7 +334,56 @@ const CostCalculator: React.FC = () => {
       },
       title: {
         display: true,
-        text: 'Databricks Cost and Profit Projection Over Time',
+        text: 'Customer Cost and Revenue Streams',
+        font: {
+          size: 14,
+        },
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context: any) {
+            return `${context.dataset.label}: $${context.raw.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        type: 'linear' as const,
+        display: true,
+        position: 'left' as const,
+        title: {
+          display: true,
+          text: 'Customer Cost & Consumption ($)',
+        },
+        grid: {
+          color: 'rgba(0, 0, 0, 0.1)',
+        },
+      },
+      y1: {
+        type: 'linear' as const,
+        display: true,
+        position: 'right' as const,
+        title: {
+          display: true,
+          text: 'Revenue Streams ($)',
+        },
+        grid: {
+          drawOnChartArea: false,
+        },
+      },
+    },
+  };
+
+  const earningsChartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: 'Monthly Cost vs Individual Earnings',
         font: {
           size: 14,
         },
@@ -267,24 +391,35 @@ const CostCalculator: React.FC = () => {
     },
     scales: {
       y: {
-        beginAtZero: true,
+        type: 'linear' as const,
+        display: true,
+        position: 'left' as const,
+        title: {
+          display: true,
+          text: 'Monthly Cost ($)',
+        },
         grid: {
           color: 'rgba(0, 0, 0, 0.1)',
-          drawBorder: false,
         },
       },
-      x: {
+      y1: {
+        type: 'linear' as const,
+        display: true,
+        position: 'right' as const,
+        title: {
+          display: true,
+          text: 'Individual Earnings ($)',
+        },
         grid: {
-          color: 'rgba(0, 0, 0, 0.1)',
-          drawBorder: false,
+          drawOnChartArea: false,
         },
       },
     },
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="bg-white rounded-lg shadow-lg p-6">
+    <div className="max-w-7xl mx-auto p-6">
+      <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -411,95 +546,35 @@ const CostCalculator: React.FC = () => {
           >
             🚀 Run Projection
           </button>
-
-          {projection.length > 0 && (
-            <>
-              <div className="money-motivator bg-gradient-to-br from-emerald-300 to-green-500 rounded-lg p-8 flex flex-col justify-center items-center border-8 border-green-600 mb-6 relative overflow-hidden shadow-2xl transform hover:scale-102 transition-all duration-300" style={{ 
-                backgroundImage: `repeating-linear-gradient(45deg, rgba(255,255,255,0.1) 0px, rgba(255,255,255,0.1) 10px, transparent 10px, transparent 20px)`
-              }}>
-                {/* Corner decorations to mimic dollar bill */}
-                <div className="absolute top-3 left-3 w-12 h-12 border-4 border-green-800 rounded-full flex items-center justify-center text-green-800 font-bold text-2xl bg-green-100 shadow-lg">$</div>
-                <div className="absolute top-3 right-3 w-12 h-12 border-4 border-green-800 rounded-full flex items-center justify-center text-green-800 font-bold text-2xl bg-green-100 shadow-lg">$</div>
-                <div className="absolute bottom-3 left-3 w-12 h-12 border-4 border-green-800 rounded-full flex items-center justify-center text-green-800 font-bold text-2xl bg-green-100 shadow-lg">$</div>
-                <div className="absolute bottom-3 right-3 w-12 h-12 border-4 border-green-800 rounded-full flex items-center justify-center text-green-800 font-bold text-2xl bg-green-100 shadow-lg">$</div>
-                
-                <h3 className="text-3xl font-extrabold text-white mb-2 text-shadow-lg">Mahoney's Money Motivator 💰</h3>
-                <p className="text-base text-white mb-6 text-center italic max-w-md font-medium text-shadow">
-                  "Credit, forget it? - you think a crackhead paying you back,<br />nah flip a zip to an ounce then bounce"
-                </p>
-                <div className="text-8xl font-black text-gray-900 mb-3 tracking-tight bg-green-300 px-6 py-2 rounded-lg shadow-lg">
-                  ${currentJoeEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-                <div className="text-xl text-white font-bold text-shadow">
-                  {isAnimating ? 'Calculating...' : 'Final Total Earnings (Consumption + Resell)'}
-                </div>
-                <div className="mt-6 text-lg text-white space-y-2">
-                  <p className="font-bold text-shadow bg-green-600/30 px-4 py-2 rounded-lg">
-                    Net New Private Offer #1: <span className="text-4xl font-black text-gray-900 bg-green-300 px-2 rounded">${projection[0].Joe.toLocaleString()}</span>
-                  </p>
-                  <p className="font-bold text-shadow bg-green-600/30 px-4 py-2 rounded-lg">
-                    Final Projected Earnings (Consumption + Resell): <span className="text-4xl font-black text-gray-900 bg-green-300 px-2 rounded">${projection[projection.length - 1].Joe.toLocaleString()}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="w-full">
-                <Line data={chartData} options={chartOptions} />
-              </div>
-            </>
-          )}
-
-          {projection.length > 0 && (
-            <>
-              <div className="mt-6 overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      {Object.keys(projection[0]).map((key) => (
-                        <th
-                          key={key}
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          {key}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {projection.map((row) => (
-                      <tr key={row.Month}>
-                        {Object.values(row).map((value, index) => (
-                          <td
-                            key={index}
-                            className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
-                          >
-                            {typeof value === 'number' ? value.toLocaleString() : value}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-6 flex space-x-4">
-                <button
-                  onClick={() => handleDownload('excel')}
-                  className="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-                >
-                  📥 Download Excel
-                </button>
-                <button
-                  onClick={() => handleDownload('json')}
-                  className="bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
-                >
-                  📥 Download JSON
-                </button>
-              </div>
-            </>
-          )}
         </div>
       </div>
+
+      {projection.length > 0 && (
+        <div className="space-y-8">
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <Line data={chartData} options={chartOptions} />
+          </div>
+
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <Line data={earningsChartData} options={earningsChartOptions} />
+          </div>
+
+          <div className="flex gap-4">
+            <button
+              onClick={() => handleDownload('excel')}
+              className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            >
+              📊 Download Excel
+            </button>
+            <button
+              onClick={() => handleDownload('json')}
+              className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              💾 Download JSON
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
