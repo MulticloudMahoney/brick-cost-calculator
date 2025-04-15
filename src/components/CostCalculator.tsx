@@ -176,8 +176,6 @@ const CostCalculator: React.FC = () => {
   useEffect(() => {
     if (projection.length > 0 && !isAnimating) {
       setIsAnimating(true);
-      const startValue = projection[0].Joe;
-      const endValue = projection[projection.length - 1].Joe;
       const duration = 5000; // 5 seconds animation
 
       const animate = (timestamp: number) => {
