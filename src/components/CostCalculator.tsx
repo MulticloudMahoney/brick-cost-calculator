@@ -76,7 +76,7 @@ const CostCalculator: React.FC = () => {
 
   useEffect(() => {
     // Create audio element with McGregor sound
-    audioRef.current = new Audio('/mcgregor.mp3');
+    audioRef.current = new Audio('/brick-cost-calculator/mcgregor.mp3');
     if (audioRef.current) {
       audioRef.current.volume = audioVolume;
     }
@@ -546,10 +546,12 @@ const CostCalculator: React.FC = () => {
       {projection.length > 0 && (
         <div className="space-y-8">
           <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-4">Revenue and Cost Metrics</h2>
             <Line data={chartData} options={chartOptions} />
           </div>
 
           <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-4">Individual Earnings Analysis</h2>
             <Line data={earningsChartData} options={earningsChartOptions} />
           </div>
 
