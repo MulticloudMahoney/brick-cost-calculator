@@ -68,7 +68,6 @@ const CostCalculator: React.FC = () => {
   const [growth, setGrowth] = useState<number>(0.15);
   const [years, setYears] = useState<number>(5);
   const [projection, setProjection] = useState<ProjectionRow[]>([]);
-  const [currentJoeEarnings, setCurrentJoeEarnings] = useState<number>(0);
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
   const [audioVolume, setAudioVolume] = useState<number>(1.0);
   const animationRef = useRef<number | null>(null);
@@ -184,9 +183,6 @@ const CostCalculator: React.FC = () => {
       const animate = (timestamp: number) => {
         if (!startTimeRef.current) startTimeRef.current = timestamp;
         const progress = Math.min((timestamp - startTimeRef.current) / duration, 1);
-        
-        const currentValue = startValue + (endValue - startValue) * progress;
-        setCurrentJoeEarnings(currentValue);
 
         if (progress < 1) {
           animationRef.current = requestAnimationFrame(animate);
