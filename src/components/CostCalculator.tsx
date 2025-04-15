@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -43,11 +43,21 @@ const baseProfiles: WorkloadProfiles = {
 
 interface ProjectionRow {
   Month: number;
-  DBUs: number;
-  'Storage (GB)': number;
-  'Compute ($)': number;
-  'Storage ($)': number;
-  'Total ($)': number;
+  'Storage Utilization (PB)': number;
+  'Unit Price (USD per PB/Month)': number;
+  'Monthly Cost (USD)': number;
+  'Monthly Cost Increase (USD)': number | null;
+  'GCP Markup (3%) Adjusted Price': number;
+  'Reseller Margin (%)': number;
+  'Reseller Revenue (USD)': number;
+  'Reseller Revenue (40%)': number;
+  View: string;
+  'Quarterly Payment to Reseller (5% of PB)': number;
+  'Reseller Gross Profit (USD)': number;
+  'Reseller Net Profit (USD)': number;
+  Joe: number;
+  Terry: number;
+  REFERRAL: number;
 }
 
 const CostCalculator: React.FC = () => {
@@ -58,8 +68,35 @@ const CostCalculator: React.FC = () => {
   const [growth, setGrowth] = useState<number>(0.15);
   const [years, setYears] = useState<number>(5);
   const [projection, setProjection] = useState<ProjectionRow[]>([]);
+  const [currentJoeEarnings, setCurrentJoeEarnings] = useState<number>(0);
+  const [isAnimating, setIsAnimating] = useState<boolean>(false);
+  const [audioVolume, setAudioVolume] = useState<number>(1.0);
+  const animationRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    // Create audio element with McGregor sound
+    audioRef.current = new Audio('/mcgregor.mp3');
+    if (audioRef.current) {
+      audioRef.current.volume = audioVolume;
+    }
+  }, []);
+
+  // Update audio volume when it changes
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = audioVolume;
+    }
+  }, [audioVolume]);
 
   const calculateProjection = () => {
+    // Play McGregor sound effect
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(error => console.log('Audio playback failed:', error));
+    }
+
     const profile = { ...baseProfiles[workload] };
     if (usePhoton) {
       profile.gb_per_dbu *= 1.1;
@@ -68,20 +105,46 @@ const CostCalculator: React.FC = () => {
     const months = years * 12;
     let currentDbus = dbus;
     const rows: ProjectionRow[] = [];
+    let prevCost: number | null = null;
 
     for (let month = 1; month <= months; month++) {
       const computeCost = currentDbus * profile.dbu_rate;
       const storageGb = currentDbus * profile.gb_per_dbu;
-      const storageCost = storageGb * storagePrice;
-      const total = computeCost + storageCost;
+      const storagePb = storageGb / 1024;
+      const unitPricePb = storagePrice * 1024;
+      const storageCostTotal = storagePb * unitPricePb;
+      const total = computeCost + storageCostTotal;
+
+      const costIncrease = prevCost !== null ? total - prevCost : null;
+      prevCost = total;
+
+      const gcpAdjusted = total / 0.97;
+      const resellerMargin = 0.25;
+      const resellerRevenue = gcpAdjusted * resellerMargin;
+      const quarterlyPayment = month % 3 === 0 ? storagePb * 0.05 * unitPricePb : 0;
+      const grossProfit = resellerRevenue + quarterlyPayment;
+      const netProfit = grossProfit * 0.60;
+      const joe = netProfit * 0.40;
+      const terry = netProfit * 0.40;
+      const referral = netProfit * 0.10;
 
       rows.push({
         Month: month,
-        DBUs: Math.round(currentDbus),
-        'Storage (GB)': Math.round(storageGb * 100) / 100,
-        'Compute ($)': Math.round(computeCost * 100) / 100,
-        'Storage ($)': Math.round(storageCost * 100) / 100,
-        'Total ($)': Math.round(total * 100) / 100,
+        'Storage Utilization (PB)': Number(storagePb.toFixed(4)),
+        'Unit Price (USD per PB/Month)': Number(unitPricePb.toFixed(2)),
+        'Monthly Cost (USD)': Number(total.toFixed(2)),
+        'Monthly Cost Increase (USD)': costIncrease ? Number(costIncrease.toFixed(2)) : null,
+        'GCP Markup (3%) Adjusted Price': Number(gcpAdjusted.toFixed(2)),
+        'Reseller Margin (%)': 25,
+        'Reseller Revenue (USD)': Number(resellerRevenue.toFixed(2)),
+        'Reseller Revenue (40%)': Number((resellerRevenue * 0.40).toFixed(2)),
+        View: 'Monthly',
+        'Quarterly Payment to Reseller (5% of PB)': Number(quarterlyPayment.toFixed(2)),
+        'Reseller Gross Profit (USD)': Number(grossProfit.toFixed(2)),
+        'Reseller Net Profit (USD)': Number(netProfit.toFixed(2)),
+        Joe: Number(joe.toFixed(2)),
+        Terry: Number(terry.toFixed(2)),
+        REFERRAL: Number(referral.toFixed(2))
       });
 
       currentDbus *= (1 + growth);
@@ -90,16 +153,55 @@ const CostCalculator: React.FC = () => {
     setProjection(rows);
   };
 
+  useEffect(() => {
+    if (projection.length > 0 && !isAnimating) {
+      setIsAnimating(true);
+      const startValue = projection[0].Joe;
+      const endValue = projection[projection.length - 1].Joe;
+      const duration = 5000; // 5 seconds animation
+
+      const animate = (timestamp: number) => {
+        if (!startTimeRef.current) startTimeRef.current = timestamp;
+        const progress = Math.min((timestamp - startTimeRef.current) / duration, 1);
+        
+        const currentValue = startValue + (endValue - startValue) * progress;
+        setCurrentJoeEarnings(currentValue);
+
+        if (progress < 1) {
+          animationRef.current = requestAnimationFrame(animate);
+        } else {
+          setIsAnimating(false);
+          startTimeRef.current = null;
+        }
+      };
+
+      animationRef.current = requestAnimationFrame(animate);
+    }
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [projection]);
+
   const handleDownload = (format: 'excel' | 'json') => {
     const data = projection.map(row => ({
       ...row,
-      'Total ($)': row['Total ($)'].toFixed(2),
-      'Compute ($)': row['Compute ($)'].toFixed(2),
-      'Storage ($)': row['Storage ($)'].toFixed(2),
+      'Monthly Cost (USD)': row['Monthly Cost (USD)'].toFixed(2),
+      'Monthly Cost Increase (USD)': row['Monthly Cost Increase (USD)']?.toFixed(2) || '',
+      'GCP Markup (3%) Adjusted Price': row['GCP Markup (3%) Adjusted Price'].toFixed(2),
+      'Reseller Revenue (USD)': row['Reseller Revenue (USD)'].toFixed(2),
+      'Reseller Revenue (40%)': row['Reseller Revenue (40%)'].toFixed(2),
+      'Quarterly Payment to Reseller (5% of PB)': row['Quarterly Payment to Reseller (5% of PB)'].toFixed(2),
+      'Reseller Gross Profit (USD)': row['Reseller Gross Profit (USD)'].toFixed(2),
+      'Reseller Net Profit (USD)': row['Reseller Net Profit (USD)'].toFixed(2),
+      Joe: row.Joe.toFixed(2),
+      Terry: row.Terry.toFixed(2),
+      REFERRAL: row.REFERRAL.toFixed(2)
     }));
 
     if (format === 'excel') {
-      // Create Excel file
       const csv = [
         Object.keys(data[0]).join(','),
         ...data.map(row => Object.values(row).join(','))
@@ -115,7 +217,6 @@ const CostCalculator: React.FC = () => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } else {
-      // Create JSON file
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -129,13 +230,21 @@ const CostCalculator: React.FC = () => {
   };
 
   const chartData = {
-    labels: projection.map(row => `Month ${row.Month}`),
+    labels: projection.length > 0 ? projection.map(row => `Month ${row.Month}`) : [],
     datasets: [
       {
-        label: 'Total Monthly Cost ($)',
-        data: projection.map(row => row['Total ($)']),
+        label: 'Monthly Cost ($)',
+        data: projection.length > 0 ? projection.map(row => row['Monthly Cost (USD)']) : [],
         borderColor: '#1f77b4',
         backgroundColor: 'rgba(31, 119, 180, 0.1)',
+        tension: 0.1,
+        fill: true,
+      },
+      {
+        label: 'Reseller Gross Profit ($)',
+        data: projection.length > 0 ? projection.map(row => row['Reseller Gross Profit (USD)']) : [],
+        borderColor: '#2ca02c',
+        backgroundColor: 'rgba(44, 160, 44, 0.1)',
         tension: 0.1,
         fill: true,
       },
@@ -150,7 +259,7 @@ const CostCalculator: React.FC = () => {
       },
       title: {
         display: true,
-        text: 'Databricks Cost Projection Over Time',
+        text: 'Databricks Cost and Profit Projection Over Time',
         font: {
           size: 14,
         },
@@ -175,8 +284,6 @@ const CostCalculator: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold text-blue-600 mb-6">📊 Databricks DBU Consumption Forecast</h2>
-      
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
@@ -188,6 +295,7 @@ const CostCalculator: React.FC = () => {
                 value={workload}
                 onChange={(e) => setWorkload(e.target.value)}
                 className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                aria-label="Select workload type"
                 title="Select workload type"
               >
                 {Object.keys(baseProfiles).map((profile) => (
@@ -224,6 +332,7 @@ const CostCalculator: React.FC = () => {
                 value={dbus}
                 onChange={(e) => setDbus(Number(e.target.value))}
                 className="w-full"
+                aria-label="Initial DBUs"
                 title="Set initial DBUs"
               />
             </div>
@@ -239,6 +348,7 @@ const CostCalculator: React.FC = () => {
                 value={storagePrice}
                 onChange={(e) => setStoragePrice(Number(e.target.value))}
                 className="w-full"
+                aria-label="Storage price per GB"
                 title="Set storage price per GB"
               />
             </div>
@@ -257,7 +367,8 @@ const CostCalculator: React.FC = () => {
                 value={growth}
                 onChange={(e) => setGrowth(Number(e.target.value))}
                 className="w-full"
-                title="Set monthly growth rate"
+                aria-label="Monthly growth percentage"
+                title="Set monthly growth percentage"
               />
             </div>
             <div>
@@ -272,66 +383,120 @@ const CostCalculator: React.FC = () => {
                 value={years}
                 onChange={(e) => setYears(Number(e.target.value))}
                 className="w-full"
+                aria-label="Projection years"
                 title="Set projection years"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sound Effect Volume: {Math.round(audioVolume * 100)}%
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={audioVolume}
+                onChange={(e) => setAudioVolume(Number(e.target.value))}
+                className="w-full"
+                aria-label="Sound effect volume"
+                title="Set sound effect volume"
               />
             </div>
           </div>
 
           <button
             onClick={calculateProjection}
-            className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             🚀 Run Projection
           </button>
 
           {projection.length > 0 && (
-            <div className="mt-8">
-              <div className="overflow-x-auto">
+            <>
+              <div className="money-motivator bg-gradient-to-br from-emerald-300 to-green-500 rounded-lg p-8 flex flex-col justify-center items-center border-8 border-green-600 mb-6 relative overflow-hidden shadow-2xl transform hover:scale-102 transition-all duration-300" style={{ 
+                backgroundImage: `repeating-linear-gradient(45deg, rgba(255,255,255,0.1) 0px, rgba(255,255,255,0.1) 10px, transparent 10px, transparent 20px)`
+              }}>
+                {/* Corner decorations to mimic dollar bill */}
+                <div className="absolute top-3 left-3 w-12 h-12 border-4 border-green-800 rounded-full flex items-center justify-center text-green-800 font-bold text-2xl bg-green-100 shadow-lg">$</div>
+                <div className="absolute top-3 right-3 w-12 h-12 border-4 border-green-800 rounded-full flex items-center justify-center text-green-800 font-bold text-2xl bg-green-100 shadow-lg">$</div>
+                <div className="absolute bottom-3 left-3 w-12 h-12 border-4 border-green-800 rounded-full flex items-center justify-center text-green-800 font-bold text-2xl bg-green-100 shadow-lg">$</div>
+                <div className="absolute bottom-3 right-3 w-12 h-12 border-4 border-green-800 rounded-full flex items-center justify-center text-green-800 font-bold text-2xl bg-green-100 shadow-lg">$</div>
+                
+                <h3 className="text-3xl font-extrabold text-white mb-2 text-shadow-lg">Mahoney's Money Motivator 💰</h3>
+                <p className="text-base text-white mb-6 text-center italic max-w-md font-medium text-shadow">
+                  "Credit, forget it? - you think a crackhead paying you back,<br />nah flip a zip to an ounce then bounce"
+                </p>
+                <div className="text-8xl font-black text-gray-900 mb-3 tracking-tight bg-green-300 px-6 py-2 rounded-lg shadow-lg">
+                  ${currentJoeEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="text-xl text-white font-bold text-shadow">
+                  {isAnimating ? 'Calculating...' : 'Final Total Earnings (Consumption + Resell)'}
+                </div>
+                <div className="mt-6 text-lg text-white space-y-2">
+                  <p className="font-bold text-shadow bg-green-600/30 px-4 py-2 rounded-lg">
+                    Net New Private Offer #1: <span className="text-4xl font-black text-gray-900 bg-green-300 px-2 rounded">${projection[0].Joe.toLocaleString()}</span>
+                  </p>
+                  <p className="font-bold text-shadow bg-green-600/30 px-4 py-2 rounded-lg">
+                    Final Projected Earnings (Consumption + Resell): <span className="text-4xl font-black text-gray-900 bg-green-300 px-2 rounded">${projection[projection.length - 1].Joe.toLocaleString()}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="w-full">
+                <Line data={chartData} options={chartOptions} />
+              </div>
+            </>
+          )}
+
+          {projection.length > 0 && (
+            <>
+              <div className="mt-6 overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">DBUs</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Storage (GB)</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Compute ($)</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Storage ($)</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total ($)</th>
+                      {Object.keys(projection[0]).map((key) => (
+                        <th
+                          key={key}
+                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          {key}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {projection.map((row) => (
                       <tr key={row.Month}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.Month}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.DBUs.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row['Storage (GB)'].toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${row['Compute ($)'].toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${row['Storage ($)'].toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${row['Total ($)'].toLocaleString()}</td>
+                        {Object.values(row).map((value, index) => (
+                          <td
+                            key={index}
+                            className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                          >
+                            {typeof value === 'number' ? value.toLocaleString() : value}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              <div className="mt-8">
-                <Line data={chartData} options={chartOptions} />
-              </div>
-
               <div className="mt-6 flex space-x-4">
                 <button
                   onClick={() => handleDownload('excel')}
-                  className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  className="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
                 >
                   📥 Download Excel
                 </button>
                 <button
                   onClick={() => handleDownload('json')}
-                  className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  className="bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
                 >
                   📥 Download JSON
                 </button>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
